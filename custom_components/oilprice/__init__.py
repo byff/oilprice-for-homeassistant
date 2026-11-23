@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_REGION
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import UpdateFailed
-from homeassistant.util import slugify
 
 from .const import (
     CONF_UPDATE_INTERVAL_HOURS,
@@ -16,9 +17,11 @@ from .const import (
     DOMAIN,
     PLATFORMS,
     SENSOR_STATE_KEYS,
-    region_name,
+    region_slug,
 )
 from .coordinator import OilPriceDataUpdateCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _normalize_entity_ids(
@@ -27,12 +30,12 @@ def _normalize_entity_ids(
     region: str,
 ) -> None:
     """Normalize entity IDs to the stable `you_jie_*` pattern."""
-    region_slug = slugify(region_name(region))
+    region_slug_value = region_slug(region)
 
     expected_sensor_ids = {
-        key: f"sensor.you_jie_{region_slug}_{key}" for key in SENSOR_STATE_KEYS
+        key: f"sensor.you_jie_{region_slug_value}_{key}" for key in SENSOR_STATE_KEYS
     }
-    expected_button_id = f"button.you_jie_{region_slug}_refresh"
+    expected_button_id = f"button.you_jie_{region_slug_value}_refresh"
 
     legacy_sensor_unique_ids = {
         f"{entry.entry_id}_oilprice",
@@ -51,27 +54,44 @@ def _normalize_entity_ids(
                 field_key = entity_entry.unique_id[len(prefix) :]
                 target_entity_id = expected_sensor_ids.get(field_key)
                 if target_entity_id and entity_entry.entity_id != target_entity_id:
-                    entity_registry.async_update_entity(
-                        entity_entry.entity_id,
-                        new_entity_id=target_entity_id,
-                    )
+                    _async_rename_entity(entity_registry, entity_entry, target_entity_id)
 
         if (
             entity_entry.domain == "button"
             and entity_entry.unique_id == f"{entry.entry_id}_refresh"
             and entity_entry.entity_id != expected_button_id
         ):
-            entity_registry.async_update_entity(
-                entity_entry.entity_id,
-                new_entity_id=expected_button_id,
-            )
+            _async_rename_entity(entity_registry, entity_entry, expected_button_id)
 
         # Compatibility cleanup from previous naming attempts.
         if "you_jia" in entity_entry.entity_id:
-            entity_registry.async_update_entity(
-                entity_entry.entity_id,
-                new_entity_id=entity_entry.entity_id.replace("you_jia", "you_jie"),
+            _async_rename_entity(
+                entity_registry,
+                entity_entry,
+                entity_entry.entity_id.replace("you_jia", "you_jie"),
             )
+
+
+def _async_rename_entity(
+    entity_registry: er.EntityRegistry, entity_entry: er.RegistryEntry, new_entity_id: str
+) -> None:
+    """Rename an entity, keeping the current ID when the target is taken.
+
+    Two regions can ask for the same entity ID, for example when a region was
+    renamed. Renaming to an ID that is already registered raises, so the
+    existing ID is kept in that case.
+    """
+    try:
+        entity_registry.async_update_entity(
+            entity_entry.entity_id,
+            new_entity_id=new_entity_id,
+        )
+    except ValueError:
+        _LOGGER.warning(
+            "Cannot rename %s to %s because that ID is already taken",
+            entity_entry.entity_id,
+            new_entity_id,
+        )
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -92,7 +112,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.options.get(CONF_UPDATE_INTERVAL_HOURS, DEFAULT_UPDATE_INTERVAL_HOURS)
     )
 
-    coordinator = OilPriceDataUpdateCoordinator(hass, region, update_interval_hours)
+    coordinator = OilPriceDataUpdateCoordinator(hass, region, update_interval_hours, entry)
     try:
         await coordinator.async_config_entry_first_refresh()
     except UpdateFailed as err:

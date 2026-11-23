@@ -13,13 +13,14 @@ from homeassistant.util import dt as dt_util
 
 from .const import region_name
 
-_BASE_URL = "http://www.huangjinjiage.cn/oil/{region}.html"
+_BASE_URL = "https://www.huangjinjiage.cn/oil/{region}.html"
 _HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     )
 }
+_GRADE_LABEL_PATTERN = r"(89|92|95|98)号汽油|(-?\d+)号柴油"
 
 
 class OilPriceApiError(Exception):
@@ -110,32 +111,107 @@ def _decode_page(raw_bytes: bytes) -> str:
 
 
 def _extract_prices_by_section(page_text: str) -> dict[str, Optional[str]]:
-    """Extract fuel prices from ordered gasoline/diesel sections."""
+    """Extract fuel prices from ordered gasoline/diesel sections.
+
+    The page lists the gasoline grades in a fixed order, but the optional
+    grades differ per section: 89# gasoline is the leading optional column of
+    the gasoline table, while 0# diesel is the leading required column of the
+    diesel table and the numbered diesel grades trail it. A grade without a
+    published price is either dropped or rendered as a dash, so the prices are
+    aligned to the grades from the side that stays fixed.
+    """
     values = {"gas92": None, "gas95": None, "gas98": None, "die0": None}
 
-    gasoline_match = re.search(
-        r"今日汽油价格[（(]元/升[）)](.*?)今日柴油价格[（(]元/升[）)]",
-        page_text,
+    gasoline_section = _extract_section(
+        page_text, r"今日汽油价格[（(]元/升[）)]", r"今日柴油价格[（(]元/升[）)]"
     )
-    if gasoline_match is not None:
-        gasoline_prices = _extract_price_tokens(gasoline_match.group(1))
-        # Order on page: 89, 92, 95, 98.
-        if len(gasoline_prices) >= 4:
-            values["gas92"] = _none_if_dash(gasoline_prices[1])
-            values["gas95"] = _none_if_dash(gasoline_prices[2])
-            values["gas98"] = _none_if_dash(gasoline_prices[3])
+    if gasoline_section:
+        _merge_prices(values, _match_prices_to_grades(gasoline_section, from_end=True))
 
-    diesel_match = re.search(
-        r"今日柴油价格[（(]元/升[）)](.*?)(?:油价调整最新消息|今日油价最新消息|$)",
+    diesel_section = _extract_section(
         page_text,
+        r"今日柴油价格[（(]元/升[）)]",
+        r"油价调整最新消息|今日油价最新消息|今日汽油价格",
     )
-    if diesel_match is not None:
-        diesel_prices = _extract_price_tokens(diesel_match.group(1))
-        # Order on page: 0, -10, -20, -35.
-        if diesel_prices:
-            values["die0"] = _none_if_dash(diesel_prices[0])
+    if diesel_section:
+        _merge_prices(values, _match_prices_to_grades(diesel_section, from_end=False))
 
     return values
+
+
+def _merge_prices(
+    target: dict[str, Optional[str]], extra: dict[str, Optional[str]]
+) -> None:
+    """Copy the prices that are still missing into the target."""
+    for key, value in extra.items():
+        if target.get(key) is None and value is not None:
+            target[key] = value
+
+
+def _extract_section(
+    page_text: str, start_pattern: str, end_pattern: str
+) -> Optional[str]:
+    """Return the text between the start marker and the next end marker."""
+    start_match = re.search(start_pattern, page_text)
+    if start_match is None:
+        return None
+
+    rest = page_text[start_match.end() :]
+    end_match = re.search(end_pattern, rest)
+    if end_match is not None:
+        rest = rest[: end_match.start()]
+
+    return rest.strip()
+
+
+def _match_prices_to_grades(
+    section_text: str, *, from_end: bool
+) -> dict[str, Optional[str]]:
+    """Match the prices of a section to the fuel grades listed before them.
+
+    The section reads as a run of grade labels followed by a run of prices.
+    When a grade has no published price it is either skipped or shown as a
+    dash, so the prices are aligned to the grades from the fixed side.
+    """
+    values = {"gas92": None, "gas95": None, "gas98": None, "die0": None}
+
+    grade_matches = list(re.finditer(_GRADE_LABEL_PATTERN, section_text))
+    if not grade_matches:
+        return values
+
+    prices = _extract_price_tokens(section_text[grade_matches[-1].end() :])
+    if not prices:
+        return values
+
+    grades = [_grade_key(grade_match) for grade_match in grade_matches]
+    if len(prices) > len(grades):
+        return values
+
+    if from_end:
+        pairs = zip(reversed(grades), reversed(prices))
+    else:
+        pairs = zip(grades, prices)
+
+    for grade, price in pairs:
+        if grade is None or grade not in values:
+            continue
+        if values[grade] is None:
+            values[grade] = _none_if_dash(price)
+
+    return values
+
+
+def _grade_key(grade_match: re.Match[str]) -> Optional[str]:
+    """Return the sensor field key of a grade label match."""
+    gasoline_grade = grade_match.group(1)
+    if gasoline_grade is not None:
+        return f"gas{gasoline_grade}"
+
+    diesel_grade = grade_match.group(2)
+    if diesel_grade == "0":
+        return "die0"
+
+    return None
 
 
 def _extract_prices_from_tables(soup: BeautifulSoup) -> dict[str, Optional[str]]:
@@ -266,14 +342,20 @@ def _pick_price(primary: Optional[str], fallback: Optional[str]) -> Optional[str
 
 
 def _extract_time_text(page_text: str) -> Optional[str]:
-    """Extract next adjustment time sentence."""
-    match = re.search(r"(油价下次调价时间[为:：]?[^；。\n]+)", page_text)
-    if match is not None:
-        return match.group(1).strip()
+    """Extract next adjustment time sentence.
 
-    match = re.search(r"(下次国内成品油价调整窗口时间为[^；。\n]+)", page_text)
-    if match is not None:
-        return match.group(1).strip()
+    The wording differs per province: most use "油价下次调价时间为", while
+    some use "下一个油价调整日期为". The summary paragraph on the page is
+    preferred over the news paragraph, so it is matched first.
+    """
+    for pattern in (
+        r"(油价下次调价时间[为:：]?[^；。\n]+)",
+        r"(下一个油价调整日期为[^；。\n]+)",
+        r"(下次国内成品油价调整窗口时间为[^；。\n]+)",
+    ):
+        match = re.search(pattern, page_text)
+        if match is not None:
+            return match.group(1).strip()
 
     return None
 
@@ -281,10 +363,15 @@ def _extract_time_text(page_text: str) -> Optional[str]:
 def _extract_tips_text(soup: BeautifulSoup) -> Optional[str]:
     """Extract latest trend tip text from news paragraphs.
 
-    Finds <p> tags containing target keywords and returns their full text content,
-    including text within child elements like <strong>.
+    Finds <p> tags containing target keywords and returns their full text
+    content, including text within child elements like <strong>.
+
+    The page lists several news paragraphs, and the newest one comes first.
+    Every paragraph after it describes an older adjustment, so the paragraphs
+    are scanned in order and the first one that carries a dated "今日油价"
+    headline wins over the older "油价调整最新消息" entries.
     """
-    keywords = ["今日油价最新消息", "油价调整最新消息"]
+    keywords = ["今日油价最新消息", "今日油价涨跌最新消息", "油价调整最新消息"]
 
     for p in soup.find_all("p"):
         p_text = _normalize_text(p.get_text(" ", strip=True))
@@ -297,12 +384,10 @@ def _extract_tips_text(soup: BeautifulSoup) -> Optional[str]:
     # Fallback: search in stripped_strings if no <p> tag matches
     page_lines = [_normalize_text(line) for line in soup.stripped_strings]
     page_lines = [line for line in page_lines if line]
-    for line in page_lines:
-        if "今日油价最新消息" in line:
-            return line
-    for line in page_lines:
-        if "油价调整最新消息" in line:
-            return line
+    for keyword in keywords:
+        for line in page_lines:
+            if keyword in line:
+                return line
 
     return None
 
@@ -330,6 +415,19 @@ def _extract_trend_text(tips_text: Optional[str]) -> Optional[str]:
         r"(?:预计|预期|预测)[^。；，]{0,20}油价[^。；，]{0,30}(上涨|上调|上升|下调|下跌|下降|搁浅|不作调整|不做调整|维持)",
     )
     for pattern in forecast_patterns:
+        match = re.search(pattern, normalized)
+        if match is not None:
+            trend = _normalize_trend_token(match.group(1))
+            if trend is not None:
+                return trend
+
+    # The settlement wording states the change of the finished oil price
+    # directly, e.g. "油价下调480元/吨". The crude oil market is described as
+    # "国际油价" or "原油价格", so those wordings are excluded here.
+    settlement_patterns = (
+        r"(?<![际原])油价(?![格])[^。；，]{0,6}(上涨|上调|上升|下调|下跌|下降|搁浅|不作调整|不做调整|维持)",
+    )
+    for pattern in settlement_patterns:
         match = re.search(pattern, normalized)
         if match is not None:
             trend = _normalize_trend_token(match.group(1))
@@ -373,43 +471,63 @@ def _normalize_trend_token(token: str) -> Optional[str]:
 
 
 def _extract_next_adjust_date_text(time_text: Optional[str]) -> Optional[str]:
-    """Extract concise next adjustment date text from the full time sentence."""
+    """Extract concise next adjustment date text from the full time sentence.
+
+    The page states the adjustment moment in several shapes, for example
+    "2026年4月7日 24:00", "2026年4月7日24时" and
+    "2026年11月26日24时（2026年11月27日0点）". A "24" hour always means
+    midnight of the following day, and the page sometimes states that
+    following day explicitly in parentheses, which is the most reliable
+    source.
+    """
     if not time_text:
         return None
 
+    parenthesized = re.search(
+        r"[（(]\s*(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2})[:：点](\d{2})?\s*[）)]",
+        time_text,
+    )
+    if parenthesized is not None:
+        year = int(parenthesized.group(1))
+        month = int(parenthesized.group(2))
+        day = int(parenthesized.group(3))
+        hour = int(parenthesized.group(4))
+        minute = int(parenthesized.group(5) or 0)
+        return _format_adjust_date(year, month, day, hour, minute)
+
     match = re.search(
-        r"(\d{4}年\d{1,2}月\d{1,2}日)\s*(?:([0-2]?\d)[:：](\d{2})|([0-2]?\d)点)?",
+        r"(\d{4})年(\d{1,2})月(\d{1,2})日\s*(?:(\d{1,2})[:：](\d{2})|(\d{1,2})[点时])?",
         time_text,
     )
     if match is None:
         return None
 
-    date_part = match.group(1)
-    hour_minute_hour = match.group(2)
-    hour_minute_minute = match.group(3)
-    hour_dot = match.group(4)
+    year = int(match.group(1))
+    month = int(match.group(2))
+    day = int(match.group(3))
 
-    if hour_minute_hour is not None:
-        hour_text = hour_minute_hour
-        minute_text = hour_minute_minute or "00"
+    if match.group(4) is not None:
+        hour = int(match.group(4))
+        minute = int(match.group(5))
+    elif match.group(6) is not None:
+        hour = int(match.group(6))
+        minute = 0
     else:
-        hour_text = hour_dot or "0"
-        minute_text = "00"
+        hour = 0
+        minute = 0
 
-    date_match = re.fullmatch(r"(\d{4})年(\d{1,2})月(\d{1,2})日", date_part)
-    if date_match is None:
-        return None
-    year = int(date_match.group(1))
-    month = int(date_match.group(2))
-    day = int(date_match.group(3))
+    return _format_adjust_date(year, month, day, hour, minute)
 
-    if hour_text == "24" and minute_text == "00":
+
+def _format_adjust_date(year: int, month: int, day: int, hour: int, minute: int) -> str:
+    """Format an adjustment moment, rolling 24:00 over to the next day."""
+    if hour == 24:
         date_obj = datetime(year, month, day) + timedelta(days=1)
         year, month, day = date_obj.year, date_obj.month, date_obj.day
-        hour_text = "0"
+        hour = 0
+        minute = 0
 
     date_part = f"{year}年{month}月{day}日"
-
-    if minute_text == "00":
-        return f"{date_part}{int(hour_text)}点"
-    return f"{date_part}{int(hour_text)}:{minute_text}"
+    if minute == 0:
+        return f"{date_part}{hour}点"
+    return f"{date_part}{hour}:{minute:02d}"

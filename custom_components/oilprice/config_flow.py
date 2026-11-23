@@ -34,7 +34,7 @@ class OilPriceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     def async_get_options_flow(config_entry: config_entries.ConfigEntry):
         """Return options flow handler."""
-        return OilPriceOptionsFlow(config_entry)
+        return OilPriceOptionsFlow()
 
     async def async_step_user(self, user_input: Optional[dict[str, Any]] = None) -> FlowResult:
         """Handle first step for creating an entry."""
@@ -80,10 +80,6 @@ class OilPriceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class OilPriceOptionsFlow(config_entries.OptionsFlow):
     """Handle options for oilprice."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input: Optional[dict[str, Any]] = None) -> FlowResult:
         """Update options."""

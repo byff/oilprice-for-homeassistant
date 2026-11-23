@@ -11,11 +11,42 @@ MAX_UPDATE_INTERVAL_HOURS = 168
 DEFAULT_REGION = "beijing"
 ICON = "mdi:gas-station"
 
-FUEL_KEY_TO_ATTR = {
-    "92": "gas92",
-    "95": "gas95",
-    "98": "gas98",
-    "0": "die0",
+# Slugs used in the entity IDs. They are pinned to the values that
+# slugifying the Chinese region name produces, so the entity IDs stay the
+# same as before. Two regions cannot share a slug, because 山西 and 陕西 both
+# slugify to "shan_xi", so 陕西 gets its own slug.
+REGION_SLUGS: dict[str, str] = {
+    "anhui": "an_hui",
+    "beijing": "bei_jing",
+    "chongqing": "zhong_qing",
+    "fujian": "fu_jian",
+    "gansu": "gan_su",
+    "guangdong": "yan_dong",
+    "guangxi": "yan_xi",
+    "guizhou": "gui_zhou",
+    "hainan": "hai_nan",
+    "hebei": "he_bei",
+    "heilongjiang": "hei_long_jiang",
+    "henan": "he_nan",
+    "hubei": "hu_bei",
+    "hunan": "hu_nan",
+    "jiangsu": "jiang_su",
+    "jiangxi": "jiang_xi",
+    "jilin": "ji_lin",
+    "liaoning": "liao_zhu",
+    "neimenggu": "nei_meng_gu",
+    "ningxia": "zhu_xia",
+    "qinghai": "qing_hai",
+    "shandong": "shan_dong",
+    "shanghai": "shang_hai",
+    "shanxi": "shan_xi",
+    "shanxisheng": "shaan_xi",
+    "sichuan": "si_chuan",
+    "tianjin": "tian_jin",
+    "xinjiang": "xin_jiang",
+    "xizang": "xi_cang",
+    "yunnan": "yun_nan",
+    "zhejiang": "zhe_jiang",
 }
 
 SENSOR_STATE_KEYS = (
@@ -73,3 +104,8 @@ REGION_SELECTOR_OPTIONS = [
 def region_name(region: str) -> str:
     """Return a friendly region name."""
     return REGIONS.get(region, region)
+
+
+def region_slug(region: str) -> str:
+    """Return the stable slug of a region, used in the entity IDs."""
+    return REGION_SLUGS.get(region, region)

@@ -413,6 +413,111 @@ class ApiParserTests(unittest.TestCase):
         )
         self.assertIsNone(api._extract_next_adjust_date_text("无日期"))
 
+    def test_extract_next_adjust_date_24_ou_wei(self) -> None:
+        """A "24时" moment is midnight of the next day."""
+        self.assertEqual(
+            api._extract_next_adjust_date_text("下一个油价调整日期为2026年11月26日 24:00"),
+            "2026年11月27日0点",
+        )
+        self.assertEqual(
+            api._extract_next_adjust_date_text("油价下次调价时间为2026年4月7日24时"),
+            "2026年4月8日0点",
+        )
+
+    def test_extract_next_adjust_date_prefers_parenthesized_day(self) -> None:
+        """The parenthesized moment states the next day explicitly."""
+        self.assertEqual(
+            api._extract_next_adjust_date_text(
+                "下次国内成品油价调整窗口时间为2026年11月26日24时（2026年11月27日0点）"
+            ),
+            "2026年11月27日0点",
+        )
+
+    def test_extract_time_text_supports_province_wording(self) -> None:
+        """Provinces use different wording for the next adjustment moment."""
+        self.assertEqual(
+            api._extract_time_text("以下油价数据价格更新时间：2026年11月23日；下一个油价调整日期为2026年11月26日 24:00；"),
+            "下一个油价调整日期为2026年11月26日 24:00",
+        )
+        self.assertEqual(
+            api._extract_time_text("以下油价数据价格更新时间：2026年11月23日；油价下次调价时间为2026年11月26日 24:00；"),
+            "油价下次调价时间为2026年11月26日 24:00",
+        )
+
+
+class ApiSectionParsingTests(unittest.TestCase):
+    """Tests for parsing prices out of the flattened page text."""
+
+    def test_section_without_89_gasoline(self) -> None:
+        """Provinces without 89# gasoline must not shift the other prices."""
+        text = (
+            "今日汽油价格（元/升） 92号汽油 95号汽油 98号汽油 8.36 8.84 9.66 "
+            "今日柴油价格（元/升） 0号柴油 -10号柴油 -20号柴油 -35号柴油 8.06 - - -"
+        )
+        values = api._extract_prices_by_section(text)
+
+        self.assertEqual(values["gas92"], "8.36")
+        self.assertEqual(values["gas95"], "8.84")
+        self.assertEqual(values["gas98"], "9.66")
+        self.assertEqual(values["die0"], "8.06")
+
+    def test_section_with_89_gasoline(self) -> None:
+        """A published 89# gasoline must not shift the other prices."""
+        text = (
+            "今日汽油价格（元/升） 89号汽油 92号汽油 95号汽油 98号汽油 - 8.37 8.91 10.41 "
+            "今日柴油价格（元/升） 0号柴油 -10号柴油 -20号柴油 -35号柴油 8.11 8.59 9.00"
+        )
+        values = api._extract_prices_by_section(text)
+
+        self.assertEqual(values["gas92"], "8.37")
+        self.assertEqual(values["gas95"], "8.91")
+        self.assertEqual(values["gas98"], "10.41")
+        self.assertEqual(values["die0"], "8.11")
+
+    def test_section_diesel_grade_labels_are_not_mistaken_for_zero(self) -> None:
+        """The "-10号柴油" label must not be read as the 0# diesel label."""
+        text = (
+            "今日柴油价格（元/升） 0号柴油 -10号柴油 -20号柴油 -35号柴油 8.30 8.79 - -"
+        )
+        values = api._extract_prices_by_section(text)
+
+        self.assertEqual(values["die0"], "8.30")
+
+
+class ApiTipsTests(unittest.TestCase):
+    """Tests for picking the newest news paragraph."""
+
+    def test_tips_prefer_the_newest_news_paragraph(self) -> None:
+        """The dated "今日油价" paragraph comes before the older ones."""
+        html = """
+        <div>
+          <p>2026年11月23日今日油价涨跌最新消息：油价下调480元/吨。</p>
+          <p>11月12日油价调整最新消息：92号汽油下跌0.52元/升。</p>
+        </div>
+        """
+        soup = api.BeautifulSoup(html, "html.parser")
+        tips = api._extract_tips_text(soup)
+
+        self.assertIn("今日油价涨跌最新消息", tips)
+        self.assertIn("油价下调480元/吨", tips)
+        self.assertNotIn("11月12日", tips)
+
+    def test_trend_from_settlement_wording(self) -> None:
+        """The settlement wording states the trend of the finished oil price."""
+        tips = (
+            "2026年11月23日今日油价涨跌最新消息：国际油价下跌，WTI美国原油价格下跌0.19%到83.2美元/桶，"
+            "新一轮10个工作日统计周期，经过7个工作日统计，油价下调480元/吨，即油价下跌0.36-0.43元/升。"
+        )
+        self.assertEqual(api._extract_trend_text(tips), "下调")
+
+    def test_trend_ignores_the_crude_oil_market(self) -> None:
+        """A falling crude oil market alone does not state the oil price trend."""
+        tips = (
+            "2026年11月23日今日油价涨跌最新消息：国际油价下跌，美国原油价格下跌12.61%到96.32美元/桶，"
+            "布伦特原油价格下跌10.26%到92.31美元/桶。"
+        )
+        self.assertIsNone(api._extract_trend_text(tips))
+
 
 if __name__ == "__main__":
     unittest.main()

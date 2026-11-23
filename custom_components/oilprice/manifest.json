@@ -1,11 +1,12 @@
 {
   "domain": "oilprice",
-  "name": "Oil Price",
-  "version": "1.0.11",
-  "documentation": "https://github.com/cheny95/oilprice-for-homeassistant",
+  "name": "油价",
+  "version": "1.1.0",
+  "documentation": "https://github.com/byff/oilprice-for-homeassistant",
+  "issue_tracker": "https://github.com/byff/oilprice-for-homeassistant/issues",
+  "codeowners": ["@byff", "@cheny95"],
   "config_flow": true,
   "dependencies": [],
-  "codeowners": ["@cheny95"],
   "requirements": ["beautifulsoup4"],
   "iot_class": "cloud_polling"
 }

@@ -1,5 +1,7 @@
 # 油价 HomeAssistant集成
 
+> 本仓库是 [cheny95/oilprice-for-homeassistant](https://github.com/cheny95/oilprice-for-homeassistant) 的 Fork，修复了 HACS 安装失败与多处解析、兼容性问题。
+
 ![yaofan](https://user-images.githubusercontent.com/6293952/196037499-17ef6aec-9fe4-4fc2-a4ac-811a12bfb380.jpg)
 
 <a name="install"></a>
@@ -7,10 +9,10 @@
 
 > 以下两种方法任选其一！
 
-#### 方法1: [HACS (**点击这里安装**)](https://my.home-assistant.io/redirect/hacs_repository/?owner=cheny95&repository=oilprice-for-homeassistant&category=integration)
+#### 方法1: [HACS (**点击这里安装**)](https://my.home-assistant.io/redirect/hacs_repository/?owner=byff&repository=oilprice-for-homeassistant&category=integration)
 
 #### 方法2: 通过 Samba / SFTP 手动安装
-> [下载](https://github.com/cheny95/oilprice-for-homeassistant/archive/main.zip)解压并复制`custom_components/oilprice`文件夹到HA配置目录下的`custom_components`文件夹
+> [下载](https://github.com/byff/oilprice-for-homeassistant/archive/main.zip)解压并复制`custom_components/oilprice`文件夹到HA配置目录下的`custom_components`文件夹
 
 ## 使用方法：
 - 安装完毕后重启Home Assistant。
@@ -48,9 +50,14 @@
 - `sensor.you_jie_bei_jing_die0`
 - `sensor.you_jie_bei_jing_time`
 - `sensor.you_jie_bei_jing_tips`
+- `sensor.you_jie_bei_jing_trend`
+- `sensor.you_jie_bei_jing_next_adjust_date`
 - `sensor.you_jie_bei_jing_update_time`
 - `sensor.you_jie_bei_jing_friendly_name`
 - `button.you_jie_bei_jing_refresh`
+
+> 地区后缀取自中文地区名的拼音（`北京` → `bei_jing`）。唯一例外是 **陕西**，其后缀为 `shaan_xi`，
+> 因为 `山西` 与 `陕西` 的拼音后缀相同（都是 `shan_xi`），会导致两个地区共用同一个实体 ID 而使集成加载失败。
 
 ### 修改更新周期
 

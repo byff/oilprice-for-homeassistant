@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import inspect
 import logging
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -19,18 +21,32 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+# The coordinator only accepts a config entry since Home Assistant 2024.11.
+# On older versions the entry is picked up from the current setup context.
+_SUPPORTS_CONFIG_ENTRY = (
+    "config_entry" in inspect.signature(DataUpdateCoordinator.__init__).parameters
+)
+
 
 class OilPriceDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator to manage periodic oilprice updates."""
 
-    def __init__(self, hass: HomeAssistant, region: str, update_interval_hours: int) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        region: str,
+        update_interval_hours: int,
+        config_entry: ConfigEntry | None = None,
+    ) -> None:
         """Initialize coordinator."""
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=f"{DOMAIN}_{region}",
-            update_interval=timedelta(hours=max(1, int(update_interval_hours))),
-        )
+        kwargs: dict[str, Any] = {
+            "name": f"{DOMAIN}_{region}",
+            "update_interval": timedelta(hours=max(1, int(update_interval_hours))),
+        }
+        if _SUPPORTS_CONFIG_ENTRY:
+            kwargs["config_entry"] = config_entry
+
+        super().__init__(hass, _LOGGER, **kwargs)
         self._region = region
 
     @property

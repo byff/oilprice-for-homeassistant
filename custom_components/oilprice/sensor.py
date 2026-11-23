@@ -11,9 +11,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.util import slugify
 
-from .const import DOMAIN, ICON, SENSOR_STATE_KEYS, region_name
+from .const import DOMAIN, ICON, SENSOR_STATE_KEYS, region_name, region_slug
 from .coordinator import OilPriceDataUpdateCoordinator
 
 _ENTITY_META: dict[str, tuple[str, str]] = {
@@ -62,14 +61,23 @@ class OilPriceFieldSensor(CoordinatorEntity[OilPriceDataUpdateCoordinator], Sens
         self._field_key = field_key
         self._region = entry.data[CONF_REGION]
         self._region_name = region_name(self._region)
-        self._region_slug = slugify(self._region_name)
+        self._region_slug = region_slug(self._region)
 
         field_name, icon = _ENTITY_META[field_key]
         self._attr_icon = icon if field_key != "gas92" else ICON
 
         self._attr_unique_id = f"{entry.entry_id}_{field_key}"
-        self._attr_object_id = f"you_jie_{self._region_slug}_{field_key}"
         self._attr_name = f"油价-{self._region_name}-{field_name}"
+
+    @property
+    def suggested_object_id(self) -> str:
+        """Return the object ID of the entity.
+
+        Home Assistant removed the ``_attr_object_id`` attribute, so the object
+        ID has to be suggested through this property to keep the entity IDs
+        stable and unique.
+        """
+        return f"you_jie_{self._region_slug}_{self._field_key}"
 
     @property
     def native_value(self) -> Optional[str]:

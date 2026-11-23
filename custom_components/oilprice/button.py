@@ -9,9 +9,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.util import slugify
 
-from .const import DOMAIN, region_name
+from .const import DOMAIN, region_name, region_slug
 from .coordinator import OilPriceDataUpdateCoordinator
 
 
@@ -39,10 +38,19 @@ class OilPriceRefreshButton(CoordinatorEntity[OilPriceDataUpdateCoordinator], Bu
         region = entry.data[CONF_REGION]
         self._region = region
         self._region_name = region_name(region)
-        self._region_slug = slugify(self._region_name)
+        self._region_slug = region_slug(region)
         self._attr_unique_id = f"{entry.entry_id}_refresh"
-        self._attr_object_id = f"you_jie_{self._region_slug}_refresh"
         self._attr_name = f"油价-{self._region_name}-立即更新"
+
+    @property
+    def suggested_object_id(self) -> str:
+        """Return the object ID of the entity.
+
+        Home Assistant removed the ``_attr_object_id`` attribute, so the object
+        ID has to be suggested through this property to keep the entity IDs
+        stable and unique.
+        """
+        return f"you_jie_{self._region_slug}_refresh"
 
     async def async_press(self) -> None:
         """Handle button press."""
