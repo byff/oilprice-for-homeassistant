@@ -1,0 +1,21 @@
+# 油价紧凑卡片（样式参考“最新油价”自定义卡片，适配本插件的实体结构）
+#
+# 用法：
+#   1. 把下方所有实体 ID 里的 bei_jing 换成你要的地区 slug
+#      （北京 bei_jing / 上海 shang_hai / 广东 yan_dong / 陕西 shaan_xi …）
+#   2. 在仪表盘编辑界面选择“Markdown”卡片，粘贴本文件内容
+#
+# 依赖实体（以北京为例）：
+#   sensor.you_jie_bei_jing_update_time  更新时间
+#   sensor.you_jie_bei_jing_gas92/95/98   汽油价格
+#   sensor.you_jie_bei_jing_die0          0# 柴油价格
+#   sensor.you_jie_bei_jing_time          下次调价时间
+#   sensor.you_jie_bei_jing_tips          调价提示
+#   sensor.you_jie_bei_jing_trend         涨跌趋势
+type: vertical-stack
+cards:
+  - type: markdown
+    content: >-
+      <div style="display:flex;align-items:center;gap:6px;color:var(--secondary-text-color);font-size:14px;"><ha-icon icon="mdi:update"></ha-icon><span>{{ states('sensor.you_jie_bei_jing_update_time') or '暂无更新' }}</span></div>
+      <div style="display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:4px 14px;margin:10px 0 6px;font-size:22px;font-weight:700;"><span><span style="color:#ea4335;">92#</span> <ha-icon icon="mdi:gas-station" style="color:var(--secondary-text-color);font-size:18px;"></ha-icon> <span style="color:#ea4335;">{{ states('sensor.you_jie_bei_jing_gas92') or '-' }}</span></span> <span><span style="color:#fbbc05;">95#</span> <ha-icon icon="mdi:gas-station" style="color:var(--secondary-text-color);font-size:18px;"></ha-icon> <span style="color:#fbbc05;">{{ states('sensor.you_jie_bei_jing_gas95') or '-' }}</span></span> <span><span style="color:#4285f4;">98#</span> <ha-icon icon="mdi:gas-station" style="color:var(--secondary-text-color);font-size:18px;"></ha-icon> <span style="color:#4285f4;">{{ states('sensor.you_jie_bei_jing_gas98') or '-' }}</span></span> <span><span style="color:#34a853;">0#柴</span> <ha-icon icon="mdi:gas-station" style="color:var(--secondary-text-color);font-size:18px;"></ha-icon> <span style="color:#34a853;">{{ states('sensor.you_jie_bei_jing_die0') or '-' }}</span></span></div>
+      <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.6;">{% set _t = states('sensor.you_jie_bei_jing_time') %}{% set _tips = states('sensor.you_jie_bei_jing_tips') %}{% set _trend = states('sensor.you_jie_bei_jing_trend') %}{% if _t and _t != 'unknown' %}<li>{{ _t }}</li>{% endif %}{% if _tips and _tips != 'unknown' %}<li>{{ _tips }}</li>{% endif %}{% if _trend and _trend not in ['unknown', '统计中'] %}<li>趋势：{{ _trend }}</li>{% endif %}</ul>
