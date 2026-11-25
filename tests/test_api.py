@@ -283,7 +283,7 @@ class ApiFetchTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["gas98"], "10.60")
         self.assertEqual(data["die0"], "8.30")
         self.assertEqual(data["time"], "油价下次调价时间为2026年4月7日 24:00")
-        self.assertIn("今日油价最新消息", data["tips"])
+        self.assertEqual(data["tips"], "经过10个工作日统计，预计油价上涨2205元/吨")
         self.assertEqual(data["trend"], "上涨")
         self.assertEqual(data["next_adjust_date"], "2026年4月8日0点")
         self.assertEqual(data["update_time"], "2026-03-24 16:32:05")
@@ -361,7 +361,6 @@ class ApiFetchTests(unittest.IsolatedAsyncioTestCase):
         with patch("custom_components.oilprice.api.async_get_clientsession", return_value=session):
             data = await api.async_fetch_oilprice(hass=object(), region="anhui")
 
-        self.assertIn("今日油价最新消息", data["tips"])
         self.assertIn("根据国家对油价的调控", data["tips"])
         self.assertIn("今晚汽油上涨420元/吨", data["tips"])
         self.assertEqual(data["trend"], "上涨")
@@ -517,6 +516,42 @@ class ApiTipsTests(unittest.TestCase):
             "布伦特原油价格下跌10.26%到92.31美元/桶。"
         )
         self.assertIsNone(api._extract_trend_text(tips))
+
+    def test_settlement_keeps_only_the_adjustment_amount(self) -> None:
+        """The market noise and the window sentence are dropped."""
+        tips = (
+            "2026年11月25日今日油价涨跌最新消息： 国际油价下跌 ，WTI美国原油价格下跌1.63%到80.7美元/桶，"
+            "布伦特原油价格下跌1.09%到90.1美元/桶，新一轮10个工作日统计周期，经过9个工作日统计， "
+            "油价下调535元/吨 ，即油价下跌0.41-0.48元/升，"
+            "下次国内成品油价调整窗口时间为2026年11月26日24时（2026年11月27日0点）。"
+        )
+        settlement = api._extract_settlement_text(tips)
+
+        self.assertEqual(
+            settlement,
+            "经过9个工作日统计， 油价下调535元/吨 ，即油价下跌0.41-0.48元/升",
+        )
+        self.assertNotIn("WTI", settlement)
+        self.assertNotIn("调整窗口时间", settlement)
+
+    def test_settlement_supports_the_regulation_wording(self) -> None:
+        """Older pages state the settlement with the regulation wording."""
+        tips = (
+            "2026年4月8日今日油价最新消息：国际油价下跌，美国原油价格下跌12.61%到96.32美元/桶，"
+            "根据国家对油价的调控，今晚汽油上涨420元/吨，柴油上涨400元/吨，"
+            "即92号汽油上涨0.33元/升，0号柴油上涨0.34元/升，"
+            "下次国内成品油价调整窗口时间为2026年4月21日24时。"
+        )
+        settlement = api._extract_settlement_text(tips)
+
+        self.assertIn("根据国家对油价的调控", settlement)
+        self.assertIn("0号柴油上涨0.34元/升", settlement)
+        self.assertNotIn("调整窗口时间", settlement)
+
+    def test_settlement_is_none_without_a_quoted_price(self) -> None:
+        """A paragraph without a price change carries no settlement."""
+        tips = "2026年11月25日今日油价涨跌最新消息：国际油价下跌，美国原油价格下跌1.63%到80.7美元/桶。"
+        self.assertIsNone(api._extract_settlement_text(tips))
 
 
 if __name__ == "__main__":

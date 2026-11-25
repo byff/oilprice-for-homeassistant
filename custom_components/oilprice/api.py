@@ -61,6 +61,7 @@ async def async_fetch_oilprice(hass, region: str) -> dict[str, Any]:
     time_text, tips_text = _extract_notice_fields(soup, normalized_text)
     trend_text = _extract_trend_text(tips_text)
     next_adjust_date = _extract_next_adjust_date_text(time_text)
+    settlement_text = _extract_settlement_text(tips_text)
 
     if not any([gas92, gas95, gas98, die0, time_text, tips_text]):
         raise OilPriceInvalidRegionError
@@ -75,7 +76,7 @@ async def async_fetch_oilprice(hass, region: str) -> dict[str, Any]:
         "gas98": gas98,
         "die0": die0,
         "time": time_text,
-        "tips": tips_text,
+        "tips": settlement_text or tips_text,
         "trend": trend_text,
         "next_adjust_date": next_adjust_date,
         "update_time": update_time,
@@ -388,6 +389,37 @@ def _extract_tips_text(soup: BeautifulSoup) -> Optional[str]:
         for line in page_lines:
             if keyword in line:
                 return line
+
+    return None
+
+
+def _extract_settlement_text(tips_text: Optional[str]) -> Optional[str]:
+    """Extract only the settlement sentence from the news paragraph.
+
+    The newest news paragraph mixes three topics: the international crude oil
+    market, the settlement of the current pricing cycle and the next
+    adjustment window. Only the settlement part is useful on a dashboard, so
+    the market noise and the window sentence are dropped.
+    """
+    if not tips_text:
+        return None
+
+    normalized = _normalize_text(tips_text)
+
+    for start_pattern in (r"经过\d+个工作日统计", r"根据国家对油价的调控"):
+        start_match = re.search(start_pattern, normalized)
+        if start_match is None:
+            continue
+
+        # Keep the sentence the settlement starts in, then cut it right after
+        # the last quoted price change so the trailing window sentence and
+        # the market noise stay out of the result.
+        sentence = re.split(r"[。；]", normalized[start_match.start() :])[0]
+        end = 0
+        for match in re.finditer(r"元/(?:吨|升)", sentence):
+            end = match.end()
+        if end:
+            return sentence[:end].strip()
 
     return None
 

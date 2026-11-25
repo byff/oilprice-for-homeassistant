@@ -1,4 +1,4 @@
-# 油价紧凑卡片（样式参考“最新油价”自定义卡片，适配本插件的实体结构）
+# 油价紧凑卡片（样式参考“最新油价”卡片，适配本插件的实体结构）
 #
 # 用法：
 #   1. 把下方所有实体 ID 里的 bei_jing 换成你要的地区 slug
@@ -6,16 +6,47 @@
 #   2. 在仪表盘编辑界面选择“Markdown”卡片，粘贴本文件内容
 #
 # 依赖实体（以北京为例）：
-#   sensor.you_jie_bei_jing_update_time  更新时间
-#   sensor.you_jie_bei_jing_gas92/95/98   汽油价格
-#   sensor.you_jie_bei_jing_die0          0# 柴油价格
-#   sensor.you_jie_bei_jing_time          下次调价时间
-#   sensor.you_jie_bei_jing_tips          调价提示
-#   sensor.you_jie_bei_jing_trend         涨跌趋势
+#   sensor.you_jie_bei_jing_friendly_name   地区名称
+#   sensor.you_jie_bei_jing_update_time     更新时间
+#   sensor.you_jie_bei_jing_gas92/95/98      汽油价格
+#   sensor.you_jie_bei_jing_die0             0# 柴油价格
+#   sensor.you_jie_bei_jing_next_adjust_date 下次调价日期
+#   sensor.you_jie_bei_jing_tips             调价幅度（如：经过9个工作日统计，油价下调535元/吨）
+#   sensor.you_jie_bei_jing_trend            涨跌趋势（上调/下调/搁浅）
 type: vertical-stack
 cards:
   - type: markdown
     content: >-
-      <div style="display:flex;align-items:center;gap:6px;color:var(--secondary-text-color);font-size:14px;"><ha-icon icon="mdi:update"></ha-icon><span>{{ states('sensor.you_jie_bei_jing_update_time') or '暂无更新' }}</span></div>
-      <div style="display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:4px 14px;margin:10px 0 6px;font-size:22px;font-weight:700;"><span><span style="color:#ea4335;">92#</span> <ha-icon icon="mdi:gas-station" style="color:var(--secondary-text-color);font-size:18px;"></ha-icon> <span style="color:#ea4335;">{{ states('sensor.you_jie_bei_jing_gas92') or '-' }}</span></span> <span><span style="color:#fbbc05;">95#</span> <ha-icon icon="mdi:gas-station" style="color:var(--secondary-text-color);font-size:18px;"></ha-icon> <span style="color:#fbbc05;">{{ states('sensor.you_jie_bei_jing_gas95') or '-' }}</span></span> <span><span style="color:#4285f4;">98#</span> <ha-icon icon="mdi:gas-station" style="color:var(--secondary-text-color);font-size:18px;"></ha-icon> <span style="color:#4285f4;">{{ states('sensor.you_jie_bei_jing_gas98') or '-' }}</span></span> <span><span style="color:#34a853;">0#柴</span> <ha-icon icon="mdi:gas-station" style="color:var(--secondary-text-color);font-size:18px;"></ha-icon> <span style="color:#34a853;">{{ states('sensor.you_jie_bei_jing_die0') or '-' }}</span></span></div>
-      <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.6;">{% set _t = states('sensor.you_jie_bei_jing_time') %}{% set _tips = states('sensor.you_jie_bei_jing_tips') %}{% set _trend = states('sensor.you_jie_bei_jing_trend') %}{% if _t and _t != 'unknown' %}<li>{{ _t }}</li>{% endif %}{% if _tips and _tips != 'unknown' %}<li>{{ _tips }}</li>{% endif %}{% if _trend and _trend not in ['unknown', '统计中'] %}<li>趋势：{{ _trend }}</li>{% endif %}</ul>
+      {%- set trend = states('sensor.you_jie_bei_jing_trend') -%}
+      {%- set tips = states('sensor.you_jie_bei_jing_tips') -%}
+      {%- set next_date = states('sensor.you_jie_bei_jing_next_adjust_date') -%}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:0 2px;">
+        <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;letter-spacing:.5px;"><ha-icon icon="mdi:gas-station" style="color:#ea4335;"></ha-icon><span>{{ states('sensor.you_jie_bei_jing_friendly_name') or '油价' }}</span></div>
+        <div style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--secondary-text-color);"><ha-icon icon="mdi:update" style="font-size:14px;"></ha-icon><span>{{ states('sensor.you_jie_bei_jing_update_time') or '暂无更新' }}</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+        <div style="text-align:center;padding:10px 2px;border-radius:12px;background:rgba(234,67,53,.10);border-left:3px solid #ea4335;">
+          <div style="font-size:12px;color:var(--secondary-text-color);">92# 汽油</div>
+          <div style="font-size:23px;font-weight:700;line-height:1.35;color:#ea4335;">{{ states('sensor.you_jie_bei_jing_gas92') or '-' }}</div>
+          <div style="font-size:11px;color:var(--secondary-text-color);">元/L</div>
+        </div>
+        <div style="text-align:center;padding:10px 2px;border-radius:12px;background:rgba(251,188,5,.12);border-left:3px solid #fbbc05;">
+          <div style="font-size:12px;color:var(--secondary-text-color);">95# 汽油</div>
+          <div style="font-size:23px;font-weight:700;line-height:1.35;color:#f0a500;">{{ states('sensor.you_jie_bei_jing_gas95') or '-' }}</div>
+          <div style="font-size:11px;color:var(--secondary-text-color);">元/L</div>
+        </div>
+        <div style="text-align:center;padding:10px 2px;border-radius:12px;background:rgba(66,133,244,.10);border-left:3px solid #4285f4;">
+          <div style="font-size:12px;color:var(--secondary-text-color);">98# 汽油</div>
+          <div style="font-size:23px;font-weight:700;line-height:1.35;color:#4285f4;">{{ states('sensor.you_jie_bei_jing_gas98') or '-' }}</div>
+          <div style="font-size:11px;color:var(--secondary-text-color);">元/L</div>
+        </div>
+        <div style="text-align:center;padding:10px 2px;border-radius:12px;background:rgba(52,168,83,.10);border-left:3px solid #34a853;">
+          <div style="font-size:12px;color:var(--secondary-text-color);">0# 柴油</div>
+          <div style="font-size:23px;font-weight:700;line-height:1.35;color:#34a853;">{{ states('sensor.you_jie_bei_jing_die0') or '-' }}</div>
+          <div style="font-size:11px;color:var(--secondary-text-color);">元/L</div>
+        </div>
+      </div>
+      <div style="margin-top:14px;padding:10px 12px;border-radius:12px;background:var(--secondary-background-color);font-size:13px;line-height:1.8;">
+        <div style="display:flex;align-items:flex-start;gap:6px;"><ha-icon icon="mdi:calendar-clock" style="color:#4285f4;font-size:16px;margin-top:3px;"></ha-icon><span><b>下次调价：</b>{{ next_date or states('sensor.you_jie_bei_jing_time') or '暂无' }}</span></div>
+        <div style="display:flex;align-items:flex-start;gap:6px;">{% if trend == '上调' %}<ha-icon icon="mdi:trending-up" style="color:#ea4335;font-size:16px;margin-top:3px;"></ha-icon>{% elif trend == '下调' %}<ha-icon icon="mdi:trending-down" style="color:#34a853;font-size:16px;margin-top:3px;"></ha-icon>{% else %}<ha-icon icon="mdi:trending-neutral" style="color:#fbbc05;font-size:16px;margin-top:3px;"></ha-icon>{% endif %}<span><b>调价幅度：</b>{{ tips or '暂无' }}</span></div>
+      </div>
